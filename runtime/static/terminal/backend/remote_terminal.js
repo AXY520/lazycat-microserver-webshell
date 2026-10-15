@@ -2,6 +2,7 @@ import { unpackRows } from "./cell_packet.js";
 import { describeCells, compareCellDescriptions } from "./cell_diagnostics.js";
 
 const cancelled = () => Object.assign(new Error("Terminal backend generation changed"), { code: "BACKEND_CANCELLED" });
+let checkpointWASMMismatchLogged = false;
 
 export class RemoteTerminal {
   constructor({ workerFactory, wasmURL, cols, rows, config, onChange, onError, viewport, visible, onDispose, diagnosticsEnabled, resizeDiagnosticsEnabled, onDiagnostic }) {
@@ -77,6 +78,15 @@ export class RemoteTerminal {
     this.diagnostic("backend_created");
     this.worker.onmessage = ({ data }) => {
       if (generation !== this.generation || this.disposed) return;
+      if (data.type === "checkpoint-wasm-mismatch") {
+        if (!checkpointWASMMismatchLogged) {
+          checkpointWASMMismatchLogged = true;
+          console.warn("Terminal checkpoint WASM hash differs; continuing restore", {
+            browser: data.browser, checkpoint: data.checkpoint,
+          });
+        }
+        return;
+      }
       const pending = this.pending.get(data.id);
       if (!pending) return;
       if (data.type === "operation-phase") {
